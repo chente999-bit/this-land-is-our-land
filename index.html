@@ -347,12 +347,7 @@ function addB(kind,x,y,w,h){
 }
 
 // ---------- Ground painting ----------
-function tree(x,y,r){
-  const gc=Wd.gc;
-  gc.fillStyle='rgba(0,0,0,.25)';gc.beginPath();gc.arc(x+3,y+4,r,0,TAU);gc.fill();
-  gc.fillStyle='#2e5a2b';gc.beginPath();gc.arc(x,y,r,0,TAU);gc.fill();
-  gc.fillStyle='#3d7136';gc.beginPath();gc.arc(x-r*.3,y-r*.3,r*.55,0,TAU);gc.fill();
-}
+function tree(x,y,r){Wd.trees.push({kind:'tree',x,y,r,hp:8,dead:false});}
 function park(x,y,w,h){
   const gc=Wd.gc;
   gc.fillStyle='#4f8a46';gc.fillRect(x+4,y+4,w-8,h-8);
@@ -475,7 +470,7 @@ function drawRoads(rows,cols){
 function genWorld(biome){
   const B=BIOMES[biome];
   const g=document.createElement('canvas');g.width=WW;g.height=WH;const gc=g.getContext('2d');
-  Wd={biome,B,ground:g,gc,buildings:[],falling:[],rowY:[],colX:[],pens:[],samSpots:[],parked:[],mini:null,mc:null};
+  Wd={biome,B,ground:g,gc,buildings:[],falling:[],trees:[],rowY:[],colX:[],pens:[],samSpots:[],parked:[],mini:null,mc:null};
   gc.fillStyle=B.g1;gc.fillRect(0,0,WW,WH);
   gc.fillStyle=B.g2;for(let i=0;i<260;i++){gc.beginPath();gc.arc(rand(0,WW),rand(0,WH),rand(20,70),0,TAU);gc.fill();}
   for(let i=0;i<5000;i++){gc.fillStyle=Math.random()<.5?'rgba(0,0,0,.06)':'rgba(255,255,255,.04)';gc.fillRect(rand(0,WW)|0,rand(0,WH)|0,2,2);}
@@ -532,7 +527,7 @@ const SKIN=['#f1c9a0','#c68e5e','#8d5a3b','#e0ac7d','#5c3a24'];
 const SHIRT=['#e85d5d','#5d8be8','#e8c35d','#7be85d','#e8e8e8','#b05de8','#e88a3c'];
 function spawnCiv(kind,x,y){
   const mil=Wd.biome==='base';
-  civs.push({kind,x,y,t:rand(0,3),panic:0,lift:0,lifting:false,idle:false,skin:pick(SKIN),shirt:mil?pick(['#5d6b3c','#6b6a45']):pick(SHIRT),face:rand(0,TAU),step:rand(0,6),dead:false});
+  civs.push({kind,x,y,hp:kind==='cow'?12:6,t:rand(0,3),panic:0,lift:0,lifting:false,idle:false,skin:pick(SKIN),shirt:mil?pick(['#5d6b3c','#6b6a45']):pick(SHIRT),face:rand(0,TAU),step:rand(0,6),dead:false});
 }
 function moveE(e,dx,dy,r){
   let m=false;
@@ -725,7 +720,7 @@ function newPlayer(si){
   const s=SHIPS[si];
   return{si,ship:s,x:WW/2,y:WH/2,vx:0,vy:0,r:s.id==='bulwark'?15:s.id==='gnat'?10:12,hull:s.hull,maxHull:s.hull,speed:s.speed,speedMul:1,
     weapons:[{id:s.weapon,lvl:1,cd:0,ang:0,discs:[]}],slots:3+(s.pas.slots||0),rate:1,blast:1,dmg:1,range:1,abductMul:s.pas.abduct||1,beamR:1,dropMul:1,regen:0,lastHit:-9,
-    heatMul:1,zoneShield:0,shield:0,magnet:90,dnaMul:1,payMul:1,startStars:0,healMul:s.pas.healMul||1,armor:s.pas.armor||1,spread:!!s.pas.spread,
+    heatMul:1,zoneShield:0,shield:0,magnet:120,dnaMul:1,payMul:1,startStars:0,healMul:s.pas.healMul||1,armor:s.pas.armor||1,spread:!!s.pas.spread,
     aimX:WW/2+100,aimY:WH/2,face:0,hdg:0,target:null,overdrive:0,alt:0,beaming:false,ringA:0,ray:null,rayOn:false,taken:[],mods:{},inv:0};
 }
 function updPlayer(dt){
@@ -774,7 +769,14 @@ function updateAim(){
     if(t){const p=aimPoint(t,P.x,P.y);P.aimX=p.x;P.aimY=p.y;}
   }else{const m=mouseWorld();P.aimX=m.x;P.aimY=m.y;P.target=null;}
 }
-function hit(t,d){if(!t||t.dead)return;if(t.kind==='en')dmgEnemy(t,d);else if(t.kind==='car')dmgCar(t,d);else if(t.kind==='b')dmgB(t,d);}
+function hit(t,d){if(!t||t.dead)return;if(t.kind==='en')dmgEnemy(t,d);else if(t.kind==='car')dmgCar(t,d);else if(t.kind==='b')dmgB(t,d);else if(t.kind==='tree')dmgTree(t,d);else dmgCiv(t,d);}
+function findAny(x,y,r,ex){
+  const t=findTarget(x,y,r,ex);if(t)return t;
+  let best=null,bd=r*r;
+  for(const c of civs){if(c.dead||c.lifting||(ex&&ex.has(c)))continue;const dd=d2(x,y,c.x,c.y);if(dd<bd){bd=dd;best=c;}}
+  return best;
+}
+function treesNear(x,y,r){const out=[];if(!Wd)return out;for(const t of Wd.trees)if(!t.dead&&Math.abs(t.x-x)<r+t.r&&Math.abs(t.y-y)<r+t.r&&d2(x,y,t.x,t.y)<(r+t.r)**2)out.push(t);return out;}
 
 // ---------- Weapons ----------
 function firing(){return opts.autofire||mouse.down||keys.has('Space');}
@@ -787,19 +789,21 @@ function updWeapons(dt){
     if(w.id==='zap'){
       w.cd-=dt*rate;
       if(w.cd<=0&&fire&&hasAim){
-        let first=opts.autoaim?P.target:findTarget(P.aimX,P.aimY,70,null);
+        let first=opts.autoaim?P.target:findAny(P.aimX,P.aimY,70,null);
         if(first){const p=tPos(first);if(d2(p.x,p.y,P.x,P.y)>(rng+60)**2)first=null;}
         if(first){w.cd=.55-.04*L;zapChain(first,1+L,(10+4*L)*P.dmg);sfx('zap');}else w.cd=.1;
       }
     }else if(w.id==='ray'){
       if(!(fire&&hasAim))continue;
       P.rayOn=true;w.ang=lerpA(w.ang,aimA,dt*9);
-      const len=(170+18*L)*P.range,dps=(28+11*L)*P.dmg*rate,ca=Math.cos(w.ang),sa=Math.sin(w.ang),hs=new Set();
+      const len=(170+18*L)*P.range,dps=(28+11*L)*P.dmg*rate,ca=Math.cos(w.ang),sa=Math.sin(w.ang),hs=new Set(),tr=treesNear(P.x,P.y,len);
       for(let s=14;s<=len;s+=10){
         const x=P.x+ca*s,y=P.y+sa*s;
         for(const e of ens)if(!e.dead&&d2(x,y,e.x,e.y)<(e.r+6)**2)hs.add(e);
         for(const c of cars)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<(c.r+5)**2)hs.add(c);
         for(const b of bNear(x,y,4))hs.add(b);
+        for(const c of civs)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<36)hs.add(c);
+        for(const t of tr)if(!t.dead&&d2(x,y,t.x,t.y)<t.r*t.r)hs.add(t);
       }
       for(const t of hs){hit(t,dps*dt);if(t.kind==='b')t.burn=Math.max(t.burn,2.5);}
       P.ray={x1:P.x+ca*12,y1:P.y+sa*12,x2:P.x+ca*len,y2:P.y+sa*len,L};
@@ -829,6 +833,8 @@ function updWeapons(dt){
         for(const e of ens)if(!e.dead&&d2(x,y,e.x,e.y)<(e.r+7)**2){dmgEnemy(e,dps*dt);touched=true;}
         for(const c of cars)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<(c.r+6)**2){dmgCar(c,dps*dt);touched=true;}
         for(const b of bNear(x,y,6)){dmgB(b,dps*dt*.8);touched=true;}
+        for(const c of civs)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<64){dmgCiv(c,dps*dt);touched=true;}
+        for(const t of treesNear(x,y,6)){dmgTree(t,dps*dt);touched=true;}
         if(touched&&Math.random()<dt*14)burst(x,y,2,COL.mint,60,.25);
       }
     }else if(w.id==='quake'){
@@ -842,7 +848,7 @@ function zapChain(first,n,d){
   for(let i=0;i<n&&cur;i++){
     hs.add(cur);const v=tVis(cur),g=tPos(cur);
     zaps.push({x1:px,y1:py,x2:v[0],y2:v[1],life:.16});hit(cur,d);px=v[0];py=v[1];
-    cur=findTarget(g.x,g.y,120,hs);
+    cur=findAny(g.x,g.y,120,hs);
   }
 }
 function updPB(dt){
@@ -858,6 +864,7 @@ function updPB(dt){
       let ht=false;
       for(const e of ens)if(!e.dead&&d2(b.x,b.y,e.x,e.y)<(e.r+3)**2){ht=true;break;}
       if(!ht)for(const c of cars)if(!c.dead&&!c.lifting&&d2(b.x,b.y,c.x,c.y)<(c.r+3)**2){ht=true;break;}
+      if(!ht&&b.h<30)for(const c of civs)if(!c.dead&&!c.lifting&&d2(b.x,b.y,c.x,c.y)<25){ht=true;break;}
       if(!ht&&b.tgt&&b.tgt.kind==='b'&&circRect(b.tgt,b.x,b.y,2))ht=true;
       if(!ht&&!b.tgt&&d2(b.x,b.y,tx,ty)<64)ht=true;
       if(ht||b.life<=0){explode(b.x,b.y,b.r,b.dmg,'p',{small:true});dead=true;}
@@ -880,7 +887,12 @@ function explode(x,y,r,d,src,o){
     for(const e of ens)if(!e.dead&&d2(x,y,e.x,e.y)<(r+e.r)**2)dmgEnemy(e,d);
     for(const c of cars)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<(r+c.r)**2)dmgCar(c,d);
     for(const b of bNear(x,y,r))dmgB(b,d);
-  }else if(d2(x,y,P.x,P.y)<(r+P.r)**2)hurtPlayer(d);
+    for(const c of civs)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<(r+3)**2)dmgCiv(c,d);
+    for(const t of treesNear(x,y,r))dmgTree(t,d);
+  }else{
+    if(d2(x,y,P.x,P.y)<(r+P.r)**2)hurtPlayer(d);
+    for(const c of civs)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<r*r)dmgCiv(c,d,false);
+  }
 }
 function quakeAt(x,y,r,d){
   waves.push({x,y,r,t:0,max:.45,col:COL.pink});addShake(3);sfx('thump');burst(x,y,16,COL.pink,r*2,.4);
@@ -888,6 +900,25 @@ function quakeAt(x,y,r,d){
   for(const e of ens)if(!e.dead&&!EN[e.type].fly&&d2(x,y,e.x,e.y)<(r+e.r)**2)dmgEnemy(e,d);
   for(const c of cars)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<(r+c.r)**2)dmgCar(c,d);
   for(const b of bNear(x,y,r))dmgB(b,d);
+  for(const c of civs)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<r*r)dmgCiv(c,d);
+  for(const t of treesNear(x,y,r))dmgTree(t,d);
+}
+function dmgCiv(c,d,mine){
+  if(c.dead||c.lifting)return;c.hp-=d;c.panic=4;
+  if(c.hp>0)return;
+  c.dead=true;scorchDot(c.x,c.y);
+  if(c.kind==='cow'){burst(c.x,c.y,14,'#f2efe6',90,.6);burst(c.x,c.y,6,'#2a2422',70,.5);if(Math.random()<.3)popText(c.x,c.y-10,'Moo!',COL.ink);}
+  else{burst(c.x,c.y,10,c.shirt,80,.5);burst(c.x,c.y,5,c.skin,60,.4);}
+  if(mine===false)return;
+  if(c.kind==='cow')R.cowsZapped++;else R.humansZapped++;
+  addDamage(c.kind==='cow'?4e3:6e3,c.x,c.y);
+  if(Math.random()<.05*P.dropMul)dropAt(c.x,c.y);
+}
+function dmgTree(t,d){
+  if(t.dead)return;t.hp-=d;if(t.hp>0)return;
+  t.dead=true;burst(t.x,t.y,14,'#3d7136',90,.6);burst(t.x,t.y,6,'#6b4a2a',60,.5);
+  scorch(t.x,t.y,t.r*1.3);const gc=Wd.gc;gc.fillStyle='#4a3524';gc.beginPath();gc.arc(t.x,t.y,Math.max(2,t.r*.3),0,TAU);gc.fill();
+  addDamage(2e3,t.x,t.y);
 }
 function addDamage(v,x,y){
   const pay=v*P.payMul;Z.damage+=pay;R.damage+=pay;Z.heat+=v*P.heatMul;Z.idle=0;
@@ -898,12 +929,12 @@ function dmgEnemy(e,d){
   if(e.hp<=0){
     e.dead=true;const D=EN[e.type];R.kills++;addDamage(D.val,e.x,e.y);
     explode(e.x,e.y,D.fly?40:30,20*P.dmg,'p');burst(e.x,e.y,12,'#555',80,.8);
-    if(Math.random()<.2*P.dropMul)dropAt(e.x,e.y);
+    if(Math.random()<.35*P.dropMul)dropAt(e.x,e.y);
   }
 }
 function dmgCar(c,d){
   if(c.dead)return;c.hp-=d;
-  if(c.hp<=0){c.dead=true;addDamage(c.val,c.x,c.y);explode(c.x,c.y,36,22*P.dmg,'p');if(Math.random()<.08*P.dropMul)dropAt(c.x,c.y);}
+  if(c.hp<=0){c.dead=true;addDamage(c.val,c.x,c.y);explode(c.x,c.y,36,22*P.dmg,'p');if(Math.random()<.2*P.dropMul)dropAt(c.x,c.y);}
 }
 function dmgB(b,d){if(b.dead)return;b.hp-=d;b.hitT=.06;if(b.hp<=0)killB(b);}
 function killB(b){
@@ -913,8 +944,8 @@ function killB(b){
   sfx('big');addShake(Math.min(8,3+b.hgt/30));
   for(const c of civs)if(d2(c.x,c.y,b.cx,b.cy)<200*200)c.panic=4;
   if(b.volatile)explode(b.cx,b.cy,80*P.blast,60*P.dmg,'p');
-  if(Math.random()<clamp(.2+b.val/5e6,.2,.6)*P.dropMul)dropAt(b.cx,b.cy);
-  if(b.val>1e6&&Math.random()<.5)dropAt(b.cx+10,b.cy-10);
+  if(Math.random()<clamp(.32+b.val/4e6,.32,.75)*P.dropMul)dropAt(b.cx,b.cy);
+  if(b.val>1e6&&Math.random()<.7)dropAt(b.cx+10,b.cy-10);
 }
 function updBuildings(dt){
   for(const b of Wd.buildings){
@@ -958,10 +989,10 @@ function abducted(e){
 }
 
 // ---------- Power-ups ----------
-const PK={weapon:{w:34},repair:{w:22,col:COL.heal,label:'+'},over:{w:14,col:COL.orange,label:'O'},shield:{w:14,col:COL.blue,label:'S'},dna:{w:13,col:COL.mint,label:'D'},doom:{w:3,col:COL.red,label:'!'}};
+const PK={weapon:{w:34},repair:{w:28,col:COL.heal,label:'+'},over:{w:14,col:COL.orange,label:'O'},shield:{w:14,col:COL.blue,label:'S'},dna:{w:7,col:COL.mint,label:'D'},doom:{w:3,col:COL.red,label:'!'}};
 function dropAt(x,y){
   let r=Math.random()*100,k='weapon';for(const kk in PK){r-=PK[kk].w;if(r<=0){k=kk;break;}}
-  const p={k,x,y,vx:rand(-30,30),vy:rand(-30,30),t:rand(0,6),life:18};
+  const p={k,x,y,vx:rand(-30,30),vy:rand(-30,30),t:rand(0,6),life:22};
   if(k==='weapon'){const fresh=WKEYS.filter(id=>!P.weapons.some(w=>w.id===id));p.wid=(Math.random()<.55&&fresh.length)?pick(fresh):pick(WKEYS);}
   pickups.push(p);
 }
@@ -1074,6 +1105,7 @@ function drawGround(inV){
   for(const b of eb)if(b.k==='shell'){const f=clamp(b.t/b.T,0,1);cx.strokeStyle=COL.red;cx.globalAlpha=.3+f*.6;cx.lineWidth=1.5;cx.beginPath();cx.arc(b.tx,b.ty,b.r*(1.2-f*.2),0,TAU);cx.stroke();cx.globalAlpha=1;}
   for(const c of civs){if(c.dead||c.lifting||!inV(c.x,c.y))continue;if(c.kind==='cow')drawCow(c);else drawHuman(c);}
   for(const c of cars){if(c.dead||c.lifting||!inV(c.x,c.y))continue;drawCar(c);}
+  for(const tr of Wd.trees){if(tr.dead||!inV(tr.x,tr.y))continue;cx.fillStyle='rgba(0,0,0,.25)';circle(tr.x+3,tr.y+4,tr.r);cx.fillStyle='#2e5a2b';circle(tr.x,tr.y,tr.r);cx.fillStyle='#3d7136';circle(tr.x-tr.r*.3,tr.y-tr.r*.3,tr.r*.55);}
   for(const e of ens){
     if(e.dead||!inV(e.x,e.y))continue;
     if(EN[e.type].fly){cx.fillStyle='rgba(0,0,0,.3)';cx.beginPath();cx.ellipse(e.x+18,e.y+26,14,7,0,0,TAU);cx.fill();}
@@ -1387,7 +1419,7 @@ function drawAttract(){
 }
 
 // ---------- Run flow ----------
-function newRun(){return{dna:0,damage:0,zones:0,kills:0,humans:0,cows:0,carsTaken:0,buildings:0};}
+function newRun(){return{dna:0,damage:0,zones:0,kills:0,humans:0,cows:0,carsTaken:0,buildings:0,humansZapped:0,cowsZapped:0};}
 function startRun(si){
   audioInit();if(actx&&actx.state==='suspended')actx.resume().catch(()=>{});
   si=clamp(si|0,0,SHIPS.length-1);store.set('ship',si);
@@ -1396,8 +1428,8 @@ function startRun(si){
 }
 function loadZone(){
   const biome=zoneIdx<ORDER.length?ORDER[zoneIdx]:pick(ORDER),loop=Math.floor(zoneIdx/ORDER.length),B=BIOMES[biome];
-  Z={biome,n:zoneIdx+1,quota:B.quota*Math.pow(1.7,loop),damage:0,heat:0,stars:0,idle:0,spawnT:4,grace:4,landing:1.8,leaving:0,extract:null,extractT:0,dna:0,met:false,
-    hpMul:1+zoneIdx*.2,dmgMul:1+zoneIdx*.12,fireMul:1+zoneIdx*.06,flash:0,hurtFlash:0,starFlash:0,starMsg:'',civT:3,bonus:0};
+  Z={biome,n:zoneIdx+1,quota:B.quota*Math.pow(1.7,loop),damage:0,heat:0,stars:0,idle:0,spawnT:5,grace:6,landing:1.8,leaving:0,extract:null,extractT:0,dna:0,met:false,
+    hpMul:1+zoneIdx*.2,dmgMul:.85+zoneIdx*.1,fireMul:1+zoneIdx*.06,flash:0,hurtFlash:0,starFlash:0,starMsg:'',civT:3,bonus:0};
   pb.length=0;eb.length=0;pickups.length=0;parts.length=0;texts.length=0;zaps.length=0;waves.length=0;banner=null;
   genWorld(biome);populate();
   const s=freeSpot(24,80,WW/2,WH/2,0,400)||freeSpot(24,200)||{x:WW/2,y:WH/2};
@@ -1483,7 +1515,7 @@ function gameOver(){
   const score=Math.round(R.damage/1e4)+R.dna*5,best=store.get('best',null),nb=!best||score>best.score;
   if(nb)store.set('best',{score,zones:R.zones,ship:P.ship.name});
   $('overTitle').textContent=`${P.ship.name} shot down`;
-  $('overStats').textContent=`Zones cleared: ${R.zones}. Damage: $${fmtMoney(R.damage)}. Abducted ${R.humans} humans, ${R.cows} cows and ${R.carsTaken} cars. Wrecked ${R.buildings} buildings and ${R.kills} responders. Score ${score.toLocaleString()}${nb?', a new best':''}.`;
+  $('overStats').textContent=`Zones cleared: ${R.zones}. Damage: $${fmtMoney(R.damage)}. Abducted ${R.humans} humans, ${R.cows} cows and ${R.carsTaken} cars. Zapped ${R.humansZapped} humans and ${R.cowsZapped} cows. Wrecked ${R.buildings} buildings and ${R.kills} responders. Score ${score.toLocaleString()}${nb?', a new best':''}.`;
   setTimeout(()=>{if(game.mode==='dead'){game.mode='over';show('ovOver');}},1500);
 }
 

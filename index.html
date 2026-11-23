@@ -90,6 +90,7 @@ kbd{font:600 13px var(--f-read);background:var(--panel);border:1px solid var(--l
     <div class="tools">
       <button class="tbtn" type="button" id="optFire" data-opt="autofire" aria-pressed="true">Auto-fire: On</button>
       <button class="tbtn" type="button" id="optAim" data-opt="autoaim" aria-pressed="true">Aim: Auto-target</button>
+      <button class="tbtn" type="button" id="optBeam" data-opt="autobeam" aria-pressed="true">Auto-beam: On</button>
       <button class="tbtn" type="button" id="optSound" data-opt="muted" aria-pressed="true">Sound: On</button>
       <button class="tbtn" type="button" id="btnFull">Fullscreen</button>
     </div>
@@ -146,7 +147,7 @@ kbd{font:600 13px var(--f-read);background:var(--panel);border:1px solid var(--l
         <li><kbd>WASD</kbd> or arrows to fly</li>
         <li><kbd>F</kbd> toggles auto-fire. With it off, hold left click or <kbd>Space</kbd></li>
         <li><kbd>T</kbd> switches between auto-target and aiming with the mouse</li>
-        <li>Hold <kbd>E</kbd>, <kbd>Shift</kbd> or right click to run the abduction beam</li>
+        <li>The abduction beam grabs people, cows and cops on foot under you by itself. <kbd>B</kbd> toggles that. Hold <kbd>E</kbd>, <kbd>Shift</kbd> or right click to grab cars too</li>
         <li><kbd>P</kbd> or <kbd>Esc</kbd> pauses, <kbd>M</kbd> mutes</li>
       </ul>
     </div>
@@ -219,7 +220,7 @@ resize();
 // ---------- Input ----------
 const keys=new Set();
 const mouse={sx:.5,sy:.5,down:false,right:false,inside:false};
-const opts={autofire:store.get('autofire',true),autoaim:store.get('autoaim',true),muted:store.get('muted',false)};
+const opts={autofire:store.get('autofire',true),autoaim:store.get('autoaim',true),autobeam:store.get('autobeam',true),muted:store.get('muted',false)};
 const pressed={pause:false};
 addEventListener('keydown',e=>{
   const k=e.code;
@@ -228,6 +229,7 @@ addEventListener('keydown',e=>{
   if(e.repeat)return;
   if(k==='KeyF')toggleOpt('autofire');
   else if(k==='KeyT')toggleOpt('autoaim');
+  else if(k==='KeyB')toggleOpt('autobeam');
   else if(k==='KeyM')toggleOpt('muted');
   else if(k==='KeyP'||k==='Escape')pressed.pause=true;
   const n=['Digit1','Digit2','Digit3','Digit4','Digit5'].indexOf(k);
@@ -284,7 +286,7 @@ const SHIPS=[
   {id:'kiln',name:'Kiln',role:'Cruiser',hull:100,speed:195,weapon:'ray',col:'#ff9a3c',passive:'Fires spread between buildings.',pas:{spread:true}},
   {id:'bulwark',name:'Bulwark',role:'Dreadnought',hull:150,speed:150,weapon:'mortar',col:'#c58cff',passive:'Takes 25% less damage.',pas:{armor:.75}},
   {id:'hive',name:'Hivemind',role:'Carrier',hull:90,speed:205,weapon:'seek',col:'#ffd75e',passive:'Starts with an extra weapon slot.',pas:{slots:1}},
-  {id:'halo',name:'Halo',role:'Destroyer',hull:110,speed:205,weapon:'ring',col:'#8cf5c8',passive:'Abductions repair twice as much.',pas:{healMul:2}}
+  {id:'halo',name:'Halo',role:'Destroyer',hull:130,speed:205,weapon:'ring',col:'#8cf5c8',passive:'Abductions repair twice as much.',pas:{healMul:2}}
 ];
 const TECH=[
   {id:'hull',name:'Reinforced Hull',desc:'+30 max hull, fully repaired.',r:'c',apply(){P.maxHull+=30;P.hull=P.maxHull;}},
@@ -757,12 +759,12 @@ const EN={
 };
 function spawnEnemy(type,x,y,o){
   const d=EN[type],hp=d.hp*Z.hpMul;
-  const e=Object.assign({kind:'en',type,x,y,vx:0,vy:0,hp,maxHp:hp,r:d.r,cd:rand(.6,1.6),burst:0,bt:0,face:rand(0,TAU),tur:0,t:0,flash:0,stuck:0,detour:0,detA:0,orbit:Math.random()<.5?1:-1,asleep:false,dead:false},o||{});
+  const e=Object.assign({kind:'en',type,x,y,vx:0,vy:0,hp,maxHp:hp,r:d.r,cd:rand(.6,1.6),burst:0,bt:0,face:rand(0,TAU),tur:0,t:0,flash:0,stuck:0,detour:0,detA:0,orbit:Math.random()<.5?1:-1,asleep:false,dead:false,lift:0,lifting:false},o||{});
   ens.push(e);return e;
 }
 function updEnemies(dt){
   for(const e of ens){
-    if(e.dead)continue;
+    if(e.dead||e.lifting)continue;
     const d=EN[e.type];e.t+=dt;if(e.flash>0)e.flash-=dt;
     const dx=P.x-e.x,dy=P.y-e.y,dist=Math.hypot(dx,dy)||1,toP=Math.atan2(dy,dx);
     if(e.asleep){if(dist<260||Z.stars>=3)e.asleep=false;else continue;}
@@ -788,7 +790,7 @@ function updEnemies(dt){
   }
   for(let i=0;i<ens.length;i++)for(let j=i+1;j<ens.length;j++){
     const a=ens[i],b=ens[j],da=EN[a.type],db=EN[b.type];
-    if(!!da.fly!==!!db.fly)continue;
+    if(!!da.fly!==!!db.fly||a.lifting||b.lifting)continue;
     const dx=b.x-a.x,dy=b.y-a.y,dd=dx*dx+dy*dy,rr=a.r+b.r;
     if(dd<rr*rr&&dd>.01){const dl=Math.sqrt(dd),push=(rr-dl)/2,nx=dx/dl,ny=dy/dl;if(!da.stat){a.x-=nx*push;a.y-=ny*push;}if(!db.stat){b.x+=nx*push;b.y+=ny*push;}}
   }
@@ -884,8 +886,9 @@ function updPlayer(dt){
   if(keys.has('KeyW')||keys.has('ArrowUp'))iy--;
   if(keys.has('KeyS')||keys.has('ArrowDown'))iy++;
   const m=Math.hypot(ix,iy);if(m>1){ix/=m;iy/=m;}
-  P.beaming=keys.has('KeyE')||keys.has('ShiftLeft')||keys.has('ShiftRight')||mouse.right;
-  const top=P.speed*P.speedMul*(P.beaming?.55:1),k=Math.min(1,dt*7);
+  P.beamManual=keys.has('KeyE')||keys.has('ShiftLeft')||keys.has('ShiftRight')||mouse.right;
+  P.beaming=P.beamManual||(opts.autobeam&&grabbableNear());
+  const top=P.speed*P.speedMul*(P.beamManual?.6:P.beaming?.85:1),k=Math.min(1,dt*7);
   P.vx=lerp(P.vx,ix*top,k);P.vy=lerp(P.vy,iy*top,k);
   P.x=clamp(P.x+P.vx*dt,20,WW-20);P.y=clamp(P.y+P.vy*dt,20,WH-20);
   if(m>0)P.face=Math.atan2(iy,ix);
@@ -908,13 +911,14 @@ function findStuff(x,y,r,ex){
 }
 function findTarget(x,y,r,ex){
   let best=null,bd=r*r;
-  for(const e of ens){if(e.dead||(ex&&ex.has(e)))continue;const dd=d2(x,y,e.x,e.y);if(dd<bd){bd=dd;best=e;}}
+  for(const e of ens){if(e.dead||e.lifting||(ex&&ex.has(e)))continue;const dd=d2(x,y,e.x,e.y);if(dd<bd){bd=dd;best=e;}}
   return best||findStuff(x,y,r,ex);
 }
 function findAuto(x,y,r){
   const t=findTarget(x,y,r,null);if(t)return t;
   let best=null,bd=r*r;
-  if(!P.beaming)for(const c of civs){if(c.dead||c.lifting)continue;const dd=d2(x,y,c.x,c.y);if(dd<bd){bd=dd;best=c;}}
+  const keep=opts.autobeam||P.beamManual?(36*P.beamR+30)**2:0;
+  for(const c of civs){if(c.dead||c.lifting)continue;const dd=d2(x,y,c.x,c.y);if(dd<keep)continue;if(dd<bd){bd=dd;best=c;}}
   if(best)return best;
   for(const p of propsNear(x,y,r)){const dd=d2(x,y,p.x,p.y);if(dd<bd){bd=dd;best=p;}}
   return best;
@@ -980,10 +984,17 @@ function updWeapons(dt){
         sfx('missile');
       }
     }else if(w.id==='ring'){
-      const n=Math.min(5,2+Math.floor(L/2)),rad=40+5*L,dps=(36+12*L)*P.dmg*rate;
-      P.ringA+=dt*(3+.2*L);w.discs.length=0;
+      const n=Math.min(5,2+Math.floor(L/2)),dps=(45+14*L)*P.dmg*rate,reach=240*P.range;
+      if(w.cx==null){w.cx=P.x;w.cy=P.y;w.orb=40;}
+      let tx=P.x,ty=P.y,orb=40+5*L;
+      const tgt=P.target||(!opts.autoaim&&fire?findAny(P.aimX,P.aimY,80,null):null);
+      if(tgt&&fire){const p=aimPoint(tgt,P.x,P.y);if(d2(p.x,p.y,P.x,P.y)<reach*reach){tx=p.x;ty=p.y;orb=8+(tgt.kind==='en'?tgt.r*.5:3);}}
+      const mdx=tx-w.cx,mdy=ty-w.cy,md=Math.hypot(mdx,mdy),mv=560*dt;
+      if(md<=mv){w.cx=tx;w.cy=ty;}else{w.cx+=mdx/md*mv;w.cy+=mdy/md*mv;}
+      w.orb=lerp(w.orb,orb,Math.min(1,dt*8));
+      P.ringA+=dt*(6+.3*L);w.discs.length=0;w.away=md>20||Math.hypot(w.cx-P.x,w.cy-P.y)>60;
       for(let i=0;i<n;i++){
-        const a=P.ringA+i*TAU/n,x=P.x+Math.cos(a)*rad,y=P.y+Math.sin(a)*rad;w.discs.push({x,y});
+        const a=P.ringA+i*TAU/n,x=w.cx+Math.cos(a)*w.orb,y=w.cy+Math.sin(a)*w.orb;w.discs.push({x,y});
         let touched=false;
         for(const e of ens)if(!e.dead&&d2(x,y,e.x,e.y)<(e.r+7)**2){dmgEnemy(e,dps*dt);touched=true;}
         for(const c of cars)if(!c.dead&&!c.lifting&&d2(x,y,c.x,c.y)<(c.r+6)**2){dmgCar(c,dps*dt);touched=true;}
@@ -1132,12 +1143,19 @@ function hurtPlayer(d){
 }
 
 // ---------- Abduction beam ----------
-const WEIGHT={human:1,cow:1.5,car:3.2,bus:6,tractor:3.5,truck:5};
+const WEIGHT={human:1,cow:1.5,car:3.2,bus:6,tractor:3.5,truck:5,en:1.3};
+function grabbable(e){return e.kind==='en'?!!EN[e.type].foot:e.kind!=='car'||P.beamManual;}
+function grabbableNear(){
+  const r2=(36*P.beamR)**2;
+  for(const c of civs)if(!c.dead&&d2(c.x,c.y,P.x,P.y)<r2)return true;
+  for(const e of ens)if(!e.dead&&EN[e.type].foot&&d2(e.x,e.y,P.x,P.y)<r2)return true;
+  return false;
+}
 function updBeam(dt){
   const R0=36*P.beamR;
-  for(const arr of [civs,cars])for(const e of arr){
-    if(e.dead)continue;
-    const inBeam=P.beaming&&d2(e.x,e.y,P.x,P.y)<R0*R0*(e.lifting?2.2:1);
+  for(const arr of [civs,cars,ens])for(const e of arr){
+    if(e.dead||(e.kind==='en'&&!EN[e.type].foot))continue;
+    const inBeam=P.beaming&&grabbable(e)&&d2(e.x,e.y,P.x,P.y)<R0*R0*(e.lifting?2.2:1);
     if(inBeam){
       e.lifting=true;e.lift+=dt*1.1*P.abductMul/WEIGHT[e.kind==='car'?e.style:e.kind];
       e.x=lerp(e.x,P.x,Math.min(1,dt*3));e.y=lerp(e.y,P.y,Math.min(1,dt*3));
@@ -1147,9 +1165,9 @@ function updBeam(dt){
   if(P.beaming)sfx('beam');
 }
 function abducted(e){
-  const k=e.kind,dna=Math.round((k==='car'?({bus:25,truck:18}[e.style]||12):k==='cow'?5:3)*P.dnaMul*P.payMul);
-  R.dna+=dna;Z.dna+=dna;P.hull=Math.min(P.maxHull,P.hull+(k==='car'?6:k==='cow'?4:2.5)*P.healMul);
-  if(k==='human')R.humans++;else if(k==='cow')R.cows++;else R.carsTaken++;
+  const k=e.kind,dna=Math.round((k==='car'?({bus:25,truck:18}[e.style]||12):k==='cow'?5:k==='en'?4:3)*P.dnaMul*P.payMul);
+  R.dna+=dna;Z.dna+=dna;P.hull=Math.min(P.maxHull,P.hull+(k==='car'?6:k==='cow'?4:k==='en'?3:2.5)*P.healMul);
+  if(k==='human')R.humans++;else if(k==='cow')R.cows++;else if(k==='en'){R.kills++;R.copsTaken=(R.copsTaken||0)+1;addDamage(EN[e.type].val,e.x,e.y);}else R.carsTaken++;
   Z.heat+=(k==='car'?60e3:8e3)*P.heatMul;Z.idle=0;
   popText(P.x,P.y-20,'+'+dna+' DNA',COL.mint);sfx('dna');burst(P.x,P.y,8,COL.mint,60,.4);
 }
@@ -1280,7 +1298,7 @@ function drawProp(p){
 function lightBar(w){const on=Math.floor(game.time*8)%2;cx.fillStyle=on?COL.red:'#5a1e24';cx.fillRect(-2,-w/2,3,w/2);cx.fillStyle=on?'#1e2e5a':COL.blue;cx.fillRect(-2,0,3,w/2);}
 function hpBar(e,x,y){if(e.hp>=e.maxHp)return;x=x==null?e.x:x;y=y==null?e.y:y;const w=e.r*2;cx.fillStyle='rgba(0,0,0,.6)';cx.fillRect(x-w/2,y-e.r-7,w,3);cx.fillStyle=COL.red;cx.fillRect(x-w/2,y-e.r-7,w*clamp(e.hp/e.maxHp,0,1),3);}
 function drawEnemy(e){
-  const fl=e.flash>0;cx.save();cx.translate(e.x,e.y);
+  const fl=e.flash>0;cx.save();if(e.lifting)liftXf(e,6);else cx.translate(e.x,e.y);
   switch(e.type){
     case 'cruiser':cx.rotate(e.face);carShape(20,11,fl?'#fff':'#e9edf2','#15181c');lightBar(10);break;
     case 'swat':cx.rotate(e.face);carShape(24,13,fl?'#fff':'#24324a','#2f405e');lightBar(12);break;
@@ -1303,7 +1321,7 @@ function drawEnemy(e){
       cx.fillStyle='#e9e3c1';cx.fillRect(2,-6,9,3);cx.fillRect(2,3,9,3);
       cx.fillStyle=COL.red;cx.fillRect(10,-6,2,3);cx.fillRect(10,3,2,3);break;
   }
-  cx.restore();hpBar(e);
+  cx.restore();if(!e.lifting)hpBar(e);
 }
 function drawGround(inV){
   const t=game.time;
@@ -1318,7 +1336,7 @@ function drawGround(inV){
   const gx0=clamp(Math.floor((camX-VW/2-60)/CELL),0,GW-1),gx1=clamp(Math.floor((camX+VW/2+60)/CELL),0,GW-1),gy0=clamp(Math.floor((camY-VH/2-60)/CELL),0,GH-1),gy1=clamp(Math.floor((camY+VH/2+60)/CELL),0,GH-1);
   for(let gy=gy0;gy<=gy1;gy++)for(let gx=gx0;gx<=gx1;gx++)for(const p of pgrid[gy*GW+gx])if(!p.dead)drawProp(p);
   for(const e of ens){
-    if(e.dead||!inV(e.x,e.y))continue;
+    if(e.dead||e.lifting||!inV(e.x,e.y))continue;
     if(EN[e.type].fly){cx.fillStyle='rgba(0,0,0,.3)';cx.beginPath();cx.ellipse(e.x+18,e.y+26,14,7,0,0,TAU);cx.fill();}
     else drawEnemy(e);
   }
@@ -1519,7 +1537,9 @@ function drawAir(inV){
   }
   for(const c of civs)if(c.lifting&&!c.dead){if(c.kind==='cow')drawCow(c,true);else drawHuman(c,true);}
   for(const c of cars)if(c.lifting&&!c.dead)drawCar(c,true);
+  for(const e of ens)if(e.lifting&&!e.dead)drawEnemy(e);
   for(const e of ens)if(!e.dead&&EN[e.type].fly&&inV(e.x,e.y))drawHeli(e);
+  if(P.alt<.1&&game.mode==='play')for(const w of P.weapons)if(w.id==='ring'&&w.away){const v=shipVis();cx.strokeStyle='rgba(140,245,200,.35)';cx.lineWidth=1.5;cx.setLineDash([4,5]);line(v.x,v.y,w.cx,w.cy);cx.setLineDash([]);}
   if(P.alt<.1&&game.mode==='play')for(const w of P.weapons)if(w.id==='ring')for(const d of w.discs){
     const q=proj(d.x,d.y,24);cx.fillStyle='rgba(140,245,200,.3)';circle(q[0],q[1],8);cx.fillStyle=COL.mint;circle(q[0],q[1],4.5);cx.fillStyle='#fff';circle(q[0],q[1],2);
   }
@@ -1612,11 +1632,11 @@ function drawHUD(){
   cx.fillStyle=COL.dim;cx.fillText('Weapon slots '+n+' of '+P.slots,14,wy+n*15+2);
   // controls hint
   cx.textAlign='center';cx.font='600 11px '+FU;cx.lineWidth=3;cx.strokeStyle='rgba(10,8,14,.8)';
-  const hint=opts.autofire?`Guns fire on their own (F to turn off)  ·  T ${opts.autoaim?'auto-target':'mouse aim'}  ·  hold E to beam things up`:`Auto-fire is OFF: hold Space or left click to shoot (F turns it back on)`;
+  const hint=opts.autofire?`F auto-fire on  ·  T ${opts.autoaim?'auto-target':'mouse aim'}  ·  B auto-beam ${opts.autobeam?'on':'off'}  ·  hold E to grab cars`:`Auto-fire is OFF: hold Space or left click to shoot (F turns it back on)`;
   cx.strokeText(hint,VW/2,VH-18);cx.fillStyle=opts.autofire?COL.dim:COL.red;cx.fillText(hint,VW/2,VH-18);
   if(Z.tip>0&&Z.landing<=0){
     cx.globalAlpha=clamp(Z.tip,0,1);cx.font='600 15px '+FU;cx.lineWidth=4;
-    const t1='Your guns fire automatically at whatever is closest.',t2='Fly with WASD. Hold E to beam up people, cows and cars for DNA.';
+    const t1='Your guns fire automatically at whatever is closest. Just fly with WASD.',t2='Your beam grabs people, cows and cops under you. Hold E to grab cars too.';
     cx.strokeText(t1,VW/2,VH*.68);cx.fillStyle=COL.ink;cx.fillText(t1,VW/2,VH*.68);
     cx.strokeText(t2,VW/2,VH*.68+20);cx.fillStyle=COL.mint;cx.fillText(t2,VW/2,VH*.68+20);
     cx.globalAlpha=1;cx.font='600 11px '+FU;
@@ -1760,7 +1780,7 @@ function gameOver(){
   const score=Math.round(R.damage/1e4)+R.dna*5,best=store.get('best',null),nb=!best||score>best.score;
   if(nb)store.set('best',{score,zones:R.zones,ship:P.ship.name});
   $('overTitle').textContent=`${P.ship.name} shot down`;
-  $('overStats').textContent=`Zones cleared: ${R.zones}. Damage: $${fmtMoney(R.damage)}. Abducted ${R.humans} humans, ${R.cows} cows and ${R.carsTaken} cars. Zapped ${R.humansZapped} humans and ${R.cowsZapped} cows. Wrecked ${R.buildings} buildings and ${R.kills} responders. Score ${score.toLocaleString()}${nb?', a new best':''}.`;
+  $('overStats').textContent=`Zones cleared: ${R.zones}. Damage: $${fmtMoney(R.damage)}. Abducted ${R.humans} humans, ${R.cows} cows, ${R.copsTaken||0} cops and ${R.carsTaken} cars. Zapped ${R.humansZapped} humans and ${R.cowsZapped} cows. Wrecked ${R.buildings} buildings and ${R.kills} responders. Score ${score.toLocaleString()}${nb?', a new best':''}.`;
   setTimeout(()=>{if(game.mode==='dead'){game.mode='over';show('ovOver');}},1500);
 }
 
@@ -1774,7 +1794,7 @@ function setPause(p){
 }
 function toTitle(){game.mode='title';Wd=null;P=null;showBest();show('ovTitle');}
 function showBest(){const b=store.get('best',null);$('bestLine').textContent=b&&b.score?`Best run: ${b.score.toLocaleString()} points, ${b.zones} zones, flying the ${b.ship}.`:'';}
-const OPT_LABEL={autofire:on=>'Auto-fire: '+(on?'On':'Off'),autoaim:on=>'Aim: '+(on?'Auto-target':'Mouse'),muted:on=>'Sound: '+(on?'On':'Off')};
+const OPT_LABEL={autofire:on=>'Auto-fire: '+(on?'On':'Off'),autoaim:on=>'Aim: '+(on?'Auto-target':'Mouse'),autobeam:on=>'Auto-beam: '+(on?'On':'Off'),muted:on=>'Sound: '+(on?'On':'Off')};
 function syncToggles(){
   document.querySelectorAll('[data-opt]').forEach(b=>{const k=b.dataset.opt,on=k==='muted'?!opts.muted:opts[k];b.setAttribute('aria-pressed',on?'true':'false');b.textContent=OPT_LABEL[k](on);});
 }

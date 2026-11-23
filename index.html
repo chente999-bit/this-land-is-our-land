@@ -911,9 +911,17 @@ function findTarget(x,y,r,ex){
   for(const e of ens){if(e.dead||(ex&&ex.has(e)))continue;const dd=d2(x,y,e.x,e.y);if(dd<bd){bd=dd;best=e;}}
   return best||findStuff(x,y,r,ex);
 }
+function findAuto(x,y,r){
+  const t=findTarget(x,y,r,null);if(t)return t;
+  let best=null,bd=r*r;
+  if(!P.beaming)for(const c of civs){if(c.dead||c.lifting)continue;const dd=d2(x,y,c.x,c.y);if(dd<bd){bd=dd;best=c;}}
+  if(best)return best;
+  for(const p of propsNear(x,y,r)){const dd=d2(x,y,p.x,p.y);if(dd<bd){bd=dd;best=p;}}
+  return best;
+}
 function updateAim(){
   if(opts.autoaim){
-    const t=findTarget(P.x,P.y,300*P.range,null);P.target=t;
+    const t=findAuto(P.x,P.y,300*P.range);P.target=t;
     if(t){const p=aimPoint(t,P.x,P.y);P.aimX=p.x;P.aimY=p.y;}
   }else{const m=mouseWorld();P.aimX=m.x;P.aimY=m.y;P.target=null;}
 }
@@ -1604,8 +1612,15 @@ function drawHUD(){
   cx.fillStyle=COL.dim;cx.fillText('Weapon slots '+n+' of '+P.slots,14,wy+n*15+2);
   // controls hint
   cx.textAlign='center';cx.font='600 11px '+FU;cx.lineWidth=3;cx.strokeStyle='rgba(10,8,14,.8)';
-  const hint=`F auto-fire ${opts.autofire?'on':'off'}  ·  T ${opts.autoaim?'auto-target':'mouse aim'}  ·  hold E to abduct`;
-  cx.strokeText(hint,VW/2,VH-18);cx.fillStyle=COL.dim;cx.fillText(hint,VW/2,VH-18);
+  const hint=opts.autofire?`Guns fire on their own (F to turn off)  ·  T ${opts.autoaim?'auto-target':'mouse aim'}  ·  hold E to beam things up`:`Auto-fire is OFF: hold Space or left click to shoot (F turns it back on)`;
+  cx.strokeText(hint,VW/2,VH-18);cx.fillStyle=opts.autofire?COL.dim:COL.red;cx.fillText(hint,VW/2,VH-18);
+  if(Z.tip>0&&Z.landing<=0){
+    cx.globalAlpha=clamp(Z.tip,0,1);cx.font='600 15px '+FU;cx.lineWidth=4;
+    const t1='Your guns fire automatically at whatever is closest.',t2='Fly with WASD. Hold E to beam up people, cows and cars for DNA.';
+    cx.strokeText(t1,VW/2,VH*.68);cx.fillStyle=COL.ink;cx.fillText(t1,VW/2,VH*.68);
+    cx.strokeText(t2,VW/2,VH*.68+20);cx.fillStyle=COL.mint;cx.fillText(t2,VW/2,VH*.68+20);
+    cx.globalAlpha=1;cx.font='600 11px '+FU;
+  }
   // minimap
   const mw=VW<600?104:132,mh=mw*.75,mx=VW-mw-8,my=VH-mh-8,ms=mw/WW;
   cx.fillStyle='rgba(14,10,20,.85)';cx.fillRect(mx-3,my-3,mw+6,mh+6);
@@ -1658,7 +1673,7 @@ function startRun(si){
 function loadZone(){
   const biome=zoneIdx<ORDER.length?ORDER[zoneIdx]:pick(ORDER),loop=Math.floor(zoneIdx/ORDER.length),B=BIOMES[biome];
   Z={biome,n:zoneIdx+1,quota:B.quota*Math.pow(1.7,loop),damage:0,heat:0,stars:0,idle:0,spawnT:5,grace:6,landing:1.8,leaving:0,extract:null,extractT:0,dna:0,met:false,
-    hpMul:1+zoneIdx*.2,dmgMul:.85+zoneIdx*.1,fireMul:1+zoneIdx*.06,flash:0,hurtFlash:0,starFlash:0,starMsg:'',civT:3,bonus:0};
+    hpMul:1+zoneIdx*.2,dmgMul:.85+zoneIdx*.1,fireMul:1+zoneIdx*.06,flash:0,hurtFlash:0,starFlash:0,starMsg:'',civT:3,bonus:0,tip:zoneIdx===0?10:0};
   pb.length=0;eb.length=0;pickups.length=0;parts.length=0;texts.length=0;zaps.length=0;waves.length=0;banner=null;
   genWorld(biome);populate();
   const s=freeSpot(24,80,WW/2,WH/2,0,400)||freeSpot(24,200)||{x:WW/2,y:WH/2};
@@ -1673,6 +1688,7 @@ function updZone(dt){
   if(Z.starFlash>0)Z.starFlash-=dt;
   if(Z.hurtFlash>0)Z.hurtFlash-=dt;
   if(Z.flash>0)Z.flash-=dt;
+  if(Z.tip>0)Z.tip-=dt;
   updHeat(dt);updBuildings(dt);
   Z.civT-=dt;
   if(Z.civT<=0){

@@ -282,11 +282,11 @@ const WEAPONS={
 };
 const WKEYS=Object.keys(WEAPONS);
 const SHIPS=[
-  {id:'gnat',name:'Gnat',role:'Corvette',hull:70,speed:235,weapon:'zap',col:'#9fe8ff',passive:'Abducts 50% faster.',pas:{abduct:1.5}},
-  {id:'kiln',name:'Kiln',role:'Cruiser',hull:100,speed:195,weapon:'ray',col:'#ff9a3c',passive:'Fires spread between buildings.',pas:{spread:true}},
-  {id:'bulwark',name:'Bulwark',role:'Dreadnought',hull:150,speed:150,weapon:'mortar',col:'#c58cff',passive:'Takes 25% less damage.',pas:{armor:.75}},
-  {id:'hive',name:'Hivemind',role:'Carrier',hull:90,speed:205,weapon:'seek',col:'#ffd75e',passive:'Starts with an extra weapon slot.',pas:{slots:1}},
-  {id:'halo',name:'Halo',role:'Destroyer',hull:130,speed:205,weapon:'ring',col:'#8cf5c8',passive:'Abductions repair twice as much.',pas:{healMul:2}}
+  {id:'gnat',name:'Gnat',role:'Tic Tac',hull:70,speed:235,weapon:'zap',col:'#9fe8ff',passive:'Abducts 50% faster.',pas:{abduct:1.5}},
+  {id:'kiln',name:'Kiln',role:'Flying saucer',hull:100,speed:195,weapon:'ray',col:'#ff9a3c',passive:'Fires spread between buildings.',pas:{spread:true}},
+  {id:'bulwark',name:'Bulwark',role:'Black triangle',hull:150,speed:150,weapon:'mortar',col:'#c58cff',passive:'Takes 25% less damage.',pas:{armor:.75}},
+  {id:'hive',name:'Hivemind',role:'Cigar mothership',hull:90,speed:205,weapon:'seek',col:'#ffd75e',passive:'Starts with an extra weapon slot.',pas:{slots:1}},
+  {id:'halo',name:'Halo',role:'Foo fighter orb',hull:130,speed:205,weapon:'ring',col:'#8cf5c8',passive:'Abductions repair twice as much.',pas:{healMul:2}}
 ];
 const TECH=[
   {id:'hull',name:'Reinforced Hull',desc:'+30 max hull, fully repaired.',r:'c',apply(){P.maxHull+=30;P.hull=P.maxHull;}},
@@ -1455,64 +1455,61 @@ function drawHeli(e){
   for(const o of [0,Math.PI/2]){cx.moveTo(Math.cos(a+o)*18,Math.sin(a+o)*18);cx.lineTo(-Math.cos(a+o)*18,-Math.sin(a+o)*18);}
   cx.stroke();cx.restore();hpBar(e,q[0],q[1]-6);
 }
-const HULL={gnat:[24,10],kiln:[32,12],bulwark:[40,18],hive:[38,16],halo:[30,12]};
+const HULL={gnat:[26,11],kiln:[30,30],bulwark:[40,36],hive:[44,12],halo:[26,26]};
 function shipVis(){const q=proj(P.x,P.y,SHIP_H),a=P.alt;return{x:q[0],y:q[1]-a*140,s:CAMD/(CAMD-SHIP_H)*(1+a*1.2)};}
 function tVis(t){if(t.kind==='b')return proj(t.cx,t.cy,t.hgt);if(t.kind==='en'&&EN[t.type].fly)return proj(t.x,t.y,EN[t.type].alt);return[t.x,t.y];}
 function hullPath(g,p){g.beginPath();g.moveTo(p[0],p[1]);for(let i=2;i<p.length;i+=2)g.lineTo(p[i],p[i+1]);g.closePath();}
-function engines(g,x,ys,col,t){g.fillStyle=col;for(const y of ys){g.globalAlpha=.55+Math.sin(t*30+y*7)*.3;g.fillRect(x-3-Math.random()*2,y-1,3+Math.random()*2,2);}g.globalAlpha=1;}
-function turret(g,x,y,r,a,len,col,twin){
-  g.save();g.translate(x,y);g.rotate(a);g.fillStyle='#2f363d';
-  if(twin){g.fillRect(0,-2.2,len,1.4);g.fillRect(0,.8,len,1.4);}else g.fillRect(0,-1,len,2);
-  g.fillStyle=col;g.fillRect(len-1.5,twin?-2.2:-1,1.5,twin?4.4:2);
-  g.fillStyle='#5d6872';g.beginPath();g.arc(0,0,r,0,TAU);g.fill();
-  g.fillStyle='#9aa6b0';g.beginPath();g.arc(-r*.25,-r*.25,r*.45,0,TAU);g.fill();g.restore();
+function capsule(g,L,R){g.beginPath();g.moveTo(-L+R,-R);g.lineTo(L-R,-R);g.arc(L-R,0,R,-Math.PI/2,Math.PI/2);g.lineTo(-L+R,R);g.arc(-L+R,0,R,Math.PI/2,Math.PI*1.5);g.closePath();}
+function glowDot(g,x,y,r,col,a){g.fillStyle=col;g.globalAlpha=(a==null?1:a)*.35;g.beginPath();g.arc(x,y,r*2.4,0,TAU);g.fill();g.globalAlpha=a==null?1:a;g.beginPath();g.arc(x,y,r,0,TAU);g.fill();g.globalAlpha=1;}
+function turret(g,x,y,r,a,len,col){
+  g.save();g.translate(x,y);g.rotate(a);g.fillStyle='#2f363d';g.fillRect(0,-1,len,2);
+  g.fillStyle=col;g.fillRect(len-1.5,-1,1.5,2);g.fillStyle='#3a414a';g.beginPath();g.arc(0,0,r,0,TAU);g.fill();g.restore();
 }
-// Alien warships drawn top-down, bow facing +x. ta = turret angle relative to the hull.
+// Pop-culture UFOs, drawn top-down with the nose facing +x. ta = weapon angle relative to the hull.
 function drawHull(g,id,col,t,ta,hurt){
-  const steel=hurt?'#ffffff':'#8a96a0',dark=hurt?'#dddddd':'#3e4750',deck='#5d6872',hd=HULL[id];
-  g.fillStyle=col;g.globalAlpha=.16;g.beginPath();g.ellipse(0,0,hd[0]*.62,hd[1]*.95,0,0,TAU);g.fill();g.globalAlpha=1;
-  let inner;
-  if(id==='gnat'){ // Corvette: slim and fast, zapper coil on the bow
-    g.fillStyle=dark;hullPath(g,[-4,-5,-11,-10,-12,-5]);g.fill();hullPath(g,[-4,5,-11,10,-12,5]);g.fill();
-    hullPath(g,[14,0,4,-5,-10,-5,-12,-3,-12,3,-10,5,4,5]);g.fill();
-    inner=[12,0,3,-3.5,-9,-3.5,-9,3.5,3,3.5];g.fillStyle=steel;hullPath(g,inner);g.fill();
-    g.fillStyle=col;g.beginPath();g.ellipse(-1,0,3.6,2.6,0,0,TAU);g.fill();
-    g.fillStyle='rgba(255,255,255,.6)';g.beginPath();g.arc(-2,-1,1,0,TAU);g.fill();
-    g.fillStyle=Math.floor(t*12)%2?'#ffffff':col;g.fillRect(9,-1,3,2);
-    engines(g,-12,[-2.5,2.5],col,t);
-  }else if(id==='kiln'){ // Cruiser: bridge tower and a forward heat-ray turret
-    g.fillStyle=dark;hullPath(g,[17,0,9,-6,-13,-6,-15,-4,-15,4,-13,6,9,6]);g.fill();
-    inner=[15,0,8,-4.5,-12,-4.5,-12,4.5,8,4.5];g.fillStyle=steel;hullPath(g,inner);g.fill();
-    g.fillStyle=deck;g.fillRect(-9,-3,10,6);g.fillStyle=steel;g.fillRect(-7,-2,6,4);g.fillStyle=col;g.fillRect(-1.6,-2,1.2,4);
-    turret(g,7,0,3,ta,9,COL.orange,false);
-    engines(g,-15,[-3,3],col,t);
-  }else if(id==='bulwark'){ // Dreadnought: wide armored hull, two twin mortar turrets
-    g.fillStyle=dark;hullPath(g,[21,0,12,-9,-16,-9,-19,-6,-19,6,-16,9,12,9]);g.fill();
-    inner=[19,0,11,-7,-15,-7,-15,7,11,7];g.fillStyle=steel;hullPath(g,inner);g.fill();
-    g.fillStyle=dark;for(const x of [-5,5])g.fillRect(x,-7,1,14);
-    g.fillStyle=deck;g.fillRect(-3,-3.5,7,7);g.fillStyle=col;g.fillRect(2.5,-2.5,1.2,5);
-    turret(g,11,0,4,ta,10,col,true);turret(g,-10,0,4,ta,10,col,true);
-    engines(g,-19,[-5,0,5],col,t);
-  }else if(id==='hive'){ // Carrier: flight deck, island tower, drones rolling off the bow
-    g.fillStyle=dark;hullPath(g,[19,-3,16,-8,-17,-8,-19,-6,-19,6,-17,8,16,8,19,3]);g.fill();
-    inner=[17,-6,-17,-6,-17,6,17,6];g.fillStyle=steel;hullPath(g,inner);g.fill();
-    g.fillStyle=deck;hullPath(g,[16,-6,-6,-6,-14,-1,-14,2,16,2]);g.fill();
-    g.fillStyle=COL.yellow;for(let x=-11;x<15;x+=5)g.fillRect(x,-2.4,2.5,.8);
-    g.fillStyle=dark;g.fillRect(-4,3.5,10,4);g.fillStyle=col;g.fillRect(-2,4.5,6,1.4);
-    for(let i=0;i<3;i++){const x=12-i*7-((t*6)%7);g.fillStyle=col;g.beginPath();g.arc(x,-4,1.1,0,TAU);g.fill();}
-    engines(g,-19,[-5,5],col,t);
-  }else{ // Destroyer: lean hull with two spinning saw mounts
-    g.fillStyle=dark;hullPath(g,[16,0,6,-6,-12,-6,-14,-3,-14,3,-12,6,6,6]);g.fill();
-    inner=[14,0,5,-4.5,-11,-4.5,-11,4.5,5,4.5];g.fillStyle=steel;hullPath(g,inner);g.fill();
-    g.fillStyle=deck;g.fillRect(-2.5,-2.5,5,5);g.fillStyle=col;g.fillRect(1.5,-2,1,4);
-    for(const x of [8,-7]){
-      g.save();g.translate(x,0);g.rotate(t*8);g.strokeStyle=col;g.lineWidth=1;g.beginPath();g.arc(0,0,2.6,0,TAU);
-      for(let k=0;k<6;k++){const a=k*TAU/6;g.moveTo(Math.cos(a)*2.6,Math.sin(a)*2.6);g.lineTo(Math.cos(a+.4)*4,Math.sin(a+.4)*4);}
-      g.stroke();g.restore();
-    }
-    engines(g,-14,[-3,3],col,t);
+  const hd=HULL[id];
+  g.fillStyle=col;g.globalAlpha=.16;g.beginPath();g.ellipse(0,0,hd[0]*.62,hd[1]*.62,0,0,TAU);g.fill();g.globalAlpha=1;
+  if(id==='gnat'){ // The "Tic Tac": a smooth white capsule, no wings, no windows
+    g.fillStyle=col;g.globalAlpha=.22+.1*Math.sin(t*7);capsule(g,15,7.5);g.fill();g.globalAlpha=1;
+    g.fillStyle=hurt?'#ffffff':'#d3dadf';capsule(g,13,5.5);g.fill();
+    g.fillStyle='#f7fbfd';g.beginPath();g.ellipse(1,-1.7,10.5,2.2,0,0,TAU);g.fill();
+    g.fillStyle='rgba(110,130,140,.35)';g.beginPath();g.ellipse(-1,2.4,10,1.6,0,0,TAU);g.fill();
+    glowDot(g,11.5,0,1.1,col,.5+.5*Math.sin(t*9));
+  }else if(id==='kiln'){ // Classic 1950s flying saucer: silver disc, rim lights, glass dome with a pilot
+    g.fillStyle=hurt?'#ffffff':'#8d98a0';g.beginPath();g.arc(0,0,15,0,TAU);g.fill();
+    g.fillStyle=hurt?'#ffffff':'#b4bec5';g.beginPath();g.arc(0,0,12.2,0,TAU);g.fill();
+    g.save();g.rotate(t*.8);g.strokeStyle='rgba(70,80,90,.45)';g.lineWidth=.6;g.beginPath();
+    for(let k=0;k<8;k++){const a=k*TAU/8;g.moveTo(Math.cos(a)*7,Math.sin(a)*7);g.lineTo(Math.cos(a)*12,Math.sin(a)*12);}
+    g.stroke();g.restore();
+    for(let k=0;k<12;k++){const a=k*TAU/12+t*2;glowDot(g,Math.cos(a)*13.6,Math.sin(a)*13.6,.9,k%2?col:COL.yellow,(Math.floor(t*6)+k)%3?1:.35);}
+    glowDot(g,Math.cos(ta)*15.5,Math.sin(ta)*15.5,1.4,COL.orange);
+    g.fillStyle='rgba(160,230,255,.55)';g.beginPath();g.arc(0,0,6.4,0,TAU);g.fill();
+    g.fillStyle='#7ddc8a';g.beginPath();g.ellipse(0,0,2.6,3.2,0,0,TAU);g.fill();
+    g.fillStyle='#10161a';g.beginPath();g.ellipse(1,-1.2,1.1,.7,.5,0,TAU);g.fill();g.beginPath();g.ellipse(1,1.2,1.1,.7,-.5,0,TAU);g.fill();
+    g.fillStyle='rgba(255,255,255,.7)';g.beginPath();g.arc(-2.4,-2.4,1.3,0,TAU);g.fill();
+  }else if(id==='bulwark'){ // The black triangle: matte dark hull, white corner lights, red center light
+    g.fillStyle=hurt?'#ffffff':'#2a2f35';hullPath(g,[21,0,-15,-18,-15,18]);g.fill();
+    g.fillStyle=hurt?'#ffffff':'#1a1e22';hullPath(g,[15,0,-11,-13,-11,13]);g.fill();
+    g.strokeStyle='rgba(120,130,140,.35)';g.lineWidth=.6;g.beginPath();g.moveTo(15,0);g.lineTo(-11,0);g.moveTo(-11,-13);g.lineTo(2,0);g.lineTo(-11,13);g.stroke();
+    turret(g,-6,-9,2.6,ta,9,col);turret(g,-6,9,2.6,ta,9,col);
+    for(const [x,y] of [[16,0],[-11,-13.5],[-11,13.5]])glowDot(g,x,y,1.7,'#ffffff');
+    glowDot(g,0,0,1.8,COL.red,.55+.45*Math.sin(t*4));
+  }else if(id==='hive'){ // Cigar-shaped mothership: long hull, porthole row, drone bays
+    g.fillStyle=hurt?'#ffffff':'#7e878e';capsule(g,22,6);g.fill();
+    g.fillStyle=hurt?'#ffffff':'#a3acb3';g.beginPath();g.ellipse(0,-1.6,19,2.6,0,0,TAU);g.fill();
+    g.strokeStyle='rgba(50,58,65,.5)';g.lineWidth=.7;g.beginPath();for(const x of [-12,-4,4,12]){g.moveTo(x,-5.6);g.lineTo(x,5.6);}g.stroke();
+    for(let x=-16;x<=16;x+=4)glowDot(g,x,1.8,.75,col,(Math.floor(t*3+x)%4)?.95:.4);
+    glowDot(g,-21.5,0,1.8,col,.6+.4*Math.sin(t*10));
+    for(let i=0;i<3;i++){const x=22-((t*14+i*8)%24);g.fillStyle=col;g.globalAlpha=.85;g.beginPath();g.arc(x+2,-8-i*.5,1,0,TAU);g.fill();g.globalAlpha=1;}
+  }else{ // Foo fighter orb: a glowing sphere inside tumbling rings
+    const gr=g.createRadialGradient(-2,-2,1,0,0,11);
+    gr.addColorStop(0,'#ffffff');gr.addColorStop(.45,hurt?'#ffffff':col);gr.addColorStop(1,'rgba(140,245,200,0)');
+    g.fillStyle=gr;g.beginPath();g.arc(0,0,11,0,TAU);g.fill();
+    g.strokeStyle=col;g.lineWidth=1.2;g.globalAlpha=.85;
+    for(const [ph,tilt] of [[0,0],[Math.PI/2,1.1]]){g.beginPath();g.ellipse(0,0,13,Math.max(.6,13*Math.abs(Math.cos(t*2.2+ph))),t*.9+tilt,0,TAU);g.stroke();}
+    g.globalAlpha=1;
+    glowDot(g,0,0,3,'#ffffff',.9);
   }
-  g.strokeStyle=col;g.globalAlpha=.55;g.lineWidth=.7;hullPath(g,inner);g.stroke();g.globalAlpha=1;
 }
 function drawShadow(){
   if(game.mode==='dead'||game.mode==='over')return;
@@ -1857,7 +1854,7 @@ function buildShips(){
     b.innerHTML=`<canvas width="240" height="120" aria-hidden="true"></canvas><span class="k">${i+1} · ${s.role}</span><b>${s.name}</b>`+
       `<span class="bars"><span>Hull</span><i style="--v:${Math.round(s.hull/150*100)}%"></i><span>Speed</span><i style="--v:${Math.round(s.speed/235*100)}%"></i></span>`+
       `<span class="w">${WEAPONS[s.weapon].name}</span><span class="d">${s.passive}</span>`;
-    try{const g=b.querySelector('canvas').getContext('2d');g.translate(120,60);g.scale(3.4,3.4);drawHull(g,s.id,s.col,0,0,false);}catch(e){}
+    try{const g=b.querySelector('canvas').getContext('2d'),hd=HULL[s.id],sc=Math.min(3.4,104/hd[0],104/hd[1]);g.translate(120,60);g.scale(sc,sc);drawHull(g,s.id,s.col,1.3,0,false);}catch(e){}
     b.addEventListener('click',()=>startRun(i));box.appendChild(b);
   });
 }

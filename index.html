@@ -46,8 +46,12 @@ button:focus-visible{outline:2px solid var(--mint);outline-offset:3px}
 .btn:hover{filter:brightness(1.08)}
 .btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
 .btn:disabled{opacity:.4;cursor:not-allowed}
+.ov#ovTitle{justify-content:flex-start;background:linear-gradient(180deg,rgba(18,13,24,.05) 0%,rgba(18,13,24,.2) 30%,rgba(18,13,24,.78) 56%,rgba(18,13,24,.94) 100%),url("title.jpg") center 32%/cover no-repeat,#2a1a24}
+.logo{font-family:var(--f-marquee);font-size:clamp(26px,5.6vw,66px);line-height:1;color:var(--poster);text-shadow:2px 2px 0 #2a0d18,-2px 2px 0 #2a0d18,2px -2px 0 #2a0d18,-2px -2px 0 #2a0d18,0 5px 0 #7a2338,0 8px 26px rgba(0,0,0,.7);margin:clamp(4px,2vw,24px) 0 auto;text-wrap:balance;max-width:16ch}
+#ovTitle p{color:#e6dcea;text-shadow:0 1px 3px rgba(0,0,0,.9)}
+#ovTitle h2{text-shadow:2px 2px 0 #2a0d18,-2px 2px 0 #2a0d18,2px -2px 0 #2a0d18,-2px -2px 0 #2a0d18,0 4px 14px rgba(0,0,0,.7)}
 .ships{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;width:min(100%,1000px)}
-.ship{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px;cursor:pointer;font:15px/1.3 var(--f-read)}
+.ship{display:flex;flex-direction:column;align-items:flex-start;gap:4px;text-align:left;background:rgba(33,26,43,.9);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:12px;cursor:pointer;font:15px/1.3 var(--f-read)}
 .ship:hover{border-color:var(--sc);transform:translateY(-2px)}
 .ship b{font:400 18px var(--f-marquee);color:var(--sc)}
 .ship .k,.card .k{color:var(--dim);font-size:13px}
@@ -76,6 +80,7 @@ kbd{font:600 13px var(--f-read);background:var(--panel);border:1px solid var(--l
   .cards{grid-template-columns:1fr;gap:6px}.card{padding:8px 12px}.card .d{font-size:13px}
   .manual{grid-template-columns:1fr}
   .ov{justify-content:flex-start;gap:8px}
+  #ovTitle .intro{display:none}
 }
 @media (prefers-reduced-motion:reduce){.ship:hover{transform:none}}
 </style>
@@ -101,8 +106,9 @@ kbd{font:600 13px var(--f-read);background:var(--panel);border:1px solid var(--l
       <canvas id="cv" aria-label="This Land Is Our Land game screen"></canvas>
 
       <div class="ov" id="ovTitle">
+        <div class="logo">This Land Is Our Land</div>
         <h2>Pick your saucer</h2>
-        <p>Land, wreck everything worth money, beam up humans and cows for DNA, and outrun the wanted level. Hit the damage quota, then fly into the green marker to extract.</p>
+        <p class="intro">Wreck everything, beam up the locals, hit the quota, get out.</p>
         <div class="ships" id="ships"></div>
         <p id="bestLine"></p>
       </div>
